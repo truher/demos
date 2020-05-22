@@ -1,8 +1,11 @@
 import timeit
-import numpy as np #type:ignore
+import numpy as np
+import pandas as pd
 import json
 import orjson
 import binascii
+import rapidjson #type:ignore
+import nujson #type:ignore
 
 loops=1000
 
@@ -89,3 +92,98 @@ def f6() -> bytes:
     return orjson.dumps(zz, option=orjson.OPT_SERIALIZE_NUMPY)
 t = timeit.timeit(f6,number=loops)
 print(f'f6 parallel ndarray orjson {1e6*t/loops} us')
+
+#######################
+# parallel json ndarray tolist
+# 
+def f8() -> bytes:
+    zz = [{'label':'a', 'x':xnp.tolist(), 'y':ynp.tolist() },
+          {'label':'b', 'x':xnp.tolist(), 'y':ynp.tolist() }]
+    return json.dumps(zz)
+t = timeit.timeit(f8,number=loops)
+print(f'f8 parallel ndarray tolist json {1e6*t/loops} us')
+
+#######################
+# parallel rapidjson ndarray tolist
+# 28 us (fastest), simplest is best
+def f9() -> bytes:
+    zz = [{'label':'a', 'x':xnp.tolist(), 'y':ynp.tolist() },
+          {'label':'b', 'x':xnp.tolist(), 'y':ynp.tolist() }]
+    return rapidjson.dumps(zz)
+t = timeit.timeit(f9,number=loops)
+print(f'f9 parallel ndarray tolist rapidjson {1e6*t/loops} us')
+
+#######################
+# parallel nujson ndarray
+# 28 us (fastest), simplest is best
+def f10() -> bytes:
+    zz = [{'label':'a', 'x':xnp, 'y':ynp }, {'label':'b', 'x':xnp, 'y':ynp }]
+    return nujson.dumps(zz)
+t = timeit.timeit(f10,number=loops)
+print(f'f10 parallel ndarray nujson {1e6*t/loops} us')
+
+#####################################################
+#                                                   #
+# DATAFRAME                                         #
+#                                                   #
+#####################################################
+
+df = pd.DataFrame()
+df['x'] = xnp
+df['y'] = ynp
+df['load'] = "foo"
+df2 = pd.DataFrame()
+df2['x'] = xnp
+df2['y'] = ynp
+df2['load'] = "bar"
+df = df.append(df2)
+#print(df)
+
+#######################
+# dataframe to_records tolist json
+# 1700 us
+def f11() -> bytes:
+    return json.dumps(df.to_records().tolist())
+t = timeit.timeit(f11,number=loops)
+print(f'f11 dataframe to_records tolist json {1e6*t/loops} us')
+#######################
+# df column values tolist json
+# 699 us
+def f12() -> bytes:
+    return json.dumps( [
+        df.index.values.tolist(),
+        df['load'].values.tolist(),
+        df['x'].values.tolist(),
+        df['y'].values.tolist()
+    ])
+t = timeit.timeit(f12,number=loops)
+print(f'f12 df column values tolist json {1e6*t/loops} us')
+#######################
+# df slice by load
+# 4388 us !! much too slow
+def f13() -> bytes:
+    loads = df['load'].unique()
+    result = {}
+    for load in loads:
+        loadslice = df[df['load'] == load] 
+        result[load + ' x'] = loadslice[['x']].to_records().tolist()
+        result[load + ' y'] = loadslice[['y']].to_records().tolist()
+    jsonresult = json.dumps(result)
+    #print(jsonresult)
+    return jsonresult
+t = timeit.timeit(f13,number=loops)
+print(f'f13 df slice by load {1e6*t/loops} us')
+#######################
+# df reset_index to_json
+# 
+def f14() -> bytes:
+    return df.reset_index().to_json()
+t = timeit.timeit(f14,number=loops)
+print(f'f14 df to_json {1e6*t/loops} us')
+#######################
+# df reset index to json orient records
+# 
+def f15() -> bytes:
+    return df.reset_index().to_json(orient='records')
+t = timeit.timeit(f15,number=loops)
+print(f'f15 df reset index to json orient records {1e6*t/loops} us')
